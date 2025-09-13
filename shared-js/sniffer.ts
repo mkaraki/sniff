@@ -6,6 +6,7 @@ import {ALL_DIG_TYPES_STRING, DNS_RECORD_TYPE_STRING_LOOKUP_TABLE} from "./dns.t
 import psl from 'psl';
 // @ts-ignore
 import spf from 'spf-parse';
+import {dnsIgnore, revDnsIgnore, spfIncludeIgnore} from "./vendor-ignore.ts";
 
 class ContinuousSearchResult {
   nextSearch: Array<string> = [];
@@ -68,8 +69,8 @@ class Sniffer {
         this.println(`- ${v.data}`);
         if (isDomain(v.data)) {
           const norm = normalizeDomain(v.data as string);
-          // ToDo: Add reverse dns lookup ignore database.
-          csRes.nextSearch.push(norm);
+          if (!revDnsIgnore(norm))
+            csRes.nextSearch.push(norm);
         }
       })
       this.println('EOS');
@@ -131,8 +132,8 @@ class Sniffer {
           // On A, NS, CNAME, AAAA
           if (isDomain(v.data)) {
             const norm = normalizeDomain(v.data as string);
-            // ToDo: Check DNS ignore list
-            csRes.nextSearch.push(norm);
+            if (!dnsIgnore(norm))
+              csRes.nextSearch.push(norm);
           } else if (isIp(v.data)) {
             csRes.nextSearch.push(v.data);
           }
@@ -141,8 +142,8 @@ class Sniffer {
           const parsed = v['data'].split(' ') as [string, string];
           if (isDomain(parsed[1])) {
             const norm = normalizeDomain(parsed[1]);
-            // ToDo: Check DNS ignore list
-            csRes.nextSearch.push(norm);
+            if (!dnsIgnore(norm))
+              csRes.nextSearch.push(norm);
           }
         } else if (v.type === 16) {
           // On TXT
@@ -156,8 +157,9 @@ class Sniffer {
               this.println(` - ${v['prefix']} ${v['type']} ${v['value'] ?? ''}`)
 
               if (v['type'] === 'include') {
-                // ToDo: Check SPF include ignore list (e.g. _spf.google.com)
-                csRes.nextSearch.push(v['value'] as string);
+                v['value'] = v['value'] as string;
+                if (!spfIncludeIgnore(v['value']))
+                  csRes.nextSearch.push(v['value']);
               } else if (v['type'] === 'ip4' || v['type'] === 'ip6') {
                 if (v['value'] !== undefined) {
                   const firstAddr = v['value'].split('/')[0];
@@ -167,8 +169,8 @@ class Sniffer {
                 }
               } else if (v['type'] === 'a' || v['type'] === 'mx') {
                 if (v['value'] !== undefined && isDomain(v['value'])) {
-                  // ToDo: Check DNS ignore list.
-                  csRes.nextSearch.push(normalizeDomain(v['value']));
+                  if (!dnsIgnore(v['value']))
+                    csRes.nextSearch.push(normalizeDomain(v['value']));
                 }
               }
             })
@@ -198,6 +200,8 @@ class Sniffer {
       return;
     }
 
+    res.nextSearch = [...new Set(res.nextSearch)];
+
     this.println('# ===================================');
     this.println('# Interests');
     this.println('# ===================================');
@@ -212,7 +216,7 @@ class Sniffer {
   doRecursiveSearch = async (target: string) => {
     let csState = new ContinuousSearchResult();
     csState.nextSearch.push(target);
-    let scanned = [];
+    let scanned: Array<string> = [];
 
     for (let i = 0; i < csState.nextSearch.length; i++) {
       const scanItem = csState.nextSearch[i] as string;
@@ -232,7 +236,7 @@ class Sniffer {
       res.nextSearch.forEach(v => {
         if (isDomain(v)) {
           let vn = normalizeDomain(v);
-          if (!scanned.includes(vn)) // ToDo: Check DNS ignore list
+          if (!scanned.includes(vn) && !dnsIgnore(vn)) // ToDo: Check DNS ignore list
             csState.nextSearch.push(vn);
         } else if (isIp(v)) {
           if (!scanned.includes(v))
@@ -242,6 +246,8 @@ class Sniffer {
 
       csState.dumps = Object.assign(csState.dumps, res.dumps);
     }
+
+    scanned = [...new Set(scanned)];
 
     this.println('# ===================================');
     this.println('# Scanned items');

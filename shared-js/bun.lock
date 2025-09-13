@@ -4,12 +4,12 @@
     "": {
       "name": "sniff-shared-js",
       "dependencies": {
-        "@types/psl": "^1.11.0",
         "psl": "^1.15.0",
         "spf-parse": "^1.0.4",
       },
       "devDependencies": {
         "@types/bun": "latest",
+        "@types/psl": "^1.11.0",
       },
       "peerDependencies": {
         "typescript": "^5",
