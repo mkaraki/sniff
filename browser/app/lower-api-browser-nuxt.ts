@@ -1,5 +1,5 @@
-import { type LowerApi, type TextOutputStream } from '../../shared-js/lower-api.ts';
-import {dnsOverHttpsQuery} from "../../shared-js/api/dns-over-https.ts";
+import { type LowerApi, type TextOutputStream } from '../../shared-js/lower-api';
+import {dnsOverHttpsQuery} from "../../shared-js/api/dns-over-https";
 
 class LowerApiBrowserConfig {
   stdoutDom: HTMLElement | undefined;
@@ -13,12 +13,22 @@ const initializeLowerApiBrowser: (config: LowerApiBrowserConfig) => LowerApi = (
   }
 
   const textOutputStreamStdOutPrint = (value: string) => {
+    if (config.stdoutDom === undefined) {
+      console.error('[Sniff][LocalApi] stdoutDom is undefined');
+      console.info('[Sniff][LocalApi][stdout]', value);
+      return;
+    }
     let newSpan = document.createElement('span');
     newSpan.innerText = value;
     config.stdoutDom?.appendChild(newSpan);
   };
 
   const textOutputStreamStdErrPrint = (value: string) => {
+    if (config.stderrDom === undefined) {
+      console.error('[Sniff][LowerApi] stderrDom is undefined');
+      console.error('[Sniff][LowerApi][stderr]', value);
+      return;
+    }
     let newSpan = document.createElement('span');
     newSpan.innerText = value;
     newSpan.classList.add('stderr')
@@ -34,7 +44,6 @@ const initializeLowerApiBrowser: (config: LowerApiBrowserConfig) => LowerApi = (
     print = (value: string) => textOutputStreamStdErrPrint(value);
     println = (value?: string) => textOutputStreamStdErrPrint((value ?? '') + '\n');
   }
-
 
   class LowerApiBrowser implements LowerApi {
     dig = digFetch;

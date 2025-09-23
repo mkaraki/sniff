@@ -1,15 +1,14 @@
-# ToDo: Add all
-all: browser/dist console-all
+all: browser/.output/public console-all
 
 clean:
 	rm -r browser/node_modules || true
-	rm -r browser/dist || true
+	rm -r browser/.output/public || true
 	rm -r console/node_modules || true
 	rm -r console/out || true
 	rm -r shared-js/node_modules || true
 
-browser/dist: browser/node_modules shared-js/node_modules
-	cd browser; bun run build
+browser/.output/public: browser/node_modules shared-js/node_modules
+	cd browser; bun --bun run generate
 
 browser/node_modules: browser/package.json
 	cd browser; bun install

@@ -4,6 +4,7 @@
   "type": "module",
   "devDependencies": {
     "@types/bun": "latest",
+    "@types/mailparser": "^3.4.6",
     "@types/psl": "^1.11.0"
   },
   "peerDependencies": {

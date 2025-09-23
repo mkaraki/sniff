@@ -245,6 +245,9 @@ class Sniffer {
       })
 
       csState.dumps = Object.assign(csState.dumps, res.dumps);
+
+      // This might not need. But for more secure result, we add this.
+      csState.nextSearch = [... new Set(csState.nextSearch)];
     }
 
     scanned = [...new Set(scanned)];
@@ -259,6 +262,16 @@ class Sniffer {
 
     return csState;
   }
+
+  /*extractEmlInterest = async (emlString: string) => {
+    const mailObj = await simpleParser(emlString, {
+      'skipHtmlToText': true,
+      'maxHtmlLengthToParse': 1,
+      'skipImageLinks': true,
+      'skipTextToHtml': true,
+      'skipTextLinks': true,
+    });
+  }*/
 }
 
 export {
