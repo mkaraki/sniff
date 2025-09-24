@@ -107,33 +107,31 @@ class Sniffer {
     let rdapOrgRes;
     try {
       rdapOrgRes = await fetch(rdapOrgUrl, {
-        redirect: 'manual'
       });
 
-      switch (rdapOrgRes.status) {
-        case 302:
-          // Process after this switch
-          break;
-        case 400:
-          this.eprintln('! rdap.org returns 400. Program bug?');
-          this.println();
-          return;
-        case 403:
-          this.eprintln('! This client might blocked by rdap.org');
-          this.println();
-          return;
-        case 404:
-          this.eprintln('! rdap.org don\'t know endpoint');
-          this.println();
-          return;
-        case 500:
-          this.eprintln('! rdap.org returns 500');
-          this.println();
-          return;
-        default:
-          this.eprintln(`! rdap.org returns unexpected code: ${rdapOrgRes.status}`);
-          this.println();
-          return;
+      if (!rdapOrgRes.redirected) {
+        switch (rdapOrgRes.status) {
+          case 400:
+            this.eprintln('! rdap.org returns 400. Program bug?');
+            this.println();
+            return;
+          case 403:
+            this.eprintln('! This client might blocked by rdap.org');
+            this.println();
+            return;
+          case 404:
+            this.eprintln('! rdap.org don\'t know endpoint');
+            this.println();
+            return;
+          case 500:
+            this.eprintln('! rdap.org returns 500');
+            this.println();
+            return;
+          default:
+            this.eprintln(`! rdap.org returns unexpected code: ${rdapOrgRes.status}`);
+            this.println();
+            return;
+        }
       }
     }
     catch (error) {
@@ -142,24 +140,17 @@ class Sniffer {
       this.println();
       return;
     }
-
-    const newUrl = rdapOrgRes.headers.get('Location');
-    if (newUrl === null || newUrl === undefined || newUrl === '') {
-      this.eprintln(`! rdap.org redirect destination is invalid?: ${newUrl}`);
-      this.println();
-      return;
-    }
-
     this.println('EOF');
     this.println();
     // =================================
     // END OF Code for rdap.org
     // =================================
 
-    this.println(`# curl ${newUrl} # <- RDAP`);
+
+    const newUrl = rdapOrgRes.url;
+    this.println(`# curl ${newUrl} # <- RDAP (final redirected address)`);
     try {
-      const firstRdapResult = await fetch(newUrl, {});
-      const firstRdapResultJson = await firstRdapResult.json();
+      const firstRdapResultJson = await rdapOrgRes.json();
 
       if (typeof firstRdapResultJson['status'] !== 'undefined') {
         this.println('- Status:');
