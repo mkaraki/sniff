@@ -46,7 +46,7 @@ class Sniffer {
   private _ipSearch = async (target: string) => {
     const csRes = new ContinuousSearchResult();
 
-    // ToDo: RDAP
+    await this._recursiveRdap('ip', target);
 
     await (async () => {
       const ptrAddr = getPtrAcceptableAddress(target);
@@ -54,7 +54,7 @@ class Sniffer {
         this.eprintln(`! Can't get PTR address for ${target}`);
         return;
       }
-      this.println(`# dig PTR ${ptrAddr}`);
+      this.println(`# dig PTR ${ptrAddr} # <- PTR of ${target}`);
 
       const ptrResult = await this.lowerApi.dig('PTR', ptrAddr);
       if (ptrResult.status !== 0) {
@@ -96,6 +96,137 @@ class Sniffer {
     return ret;
   }
 
+  private _recursiveRdap = async (type: string, target: string) => {
+    // Type must `domain`, `ip` or `autnum`. See: https://about.rdap.org/
+
+    // =================================
+    // Code for rdap.org
+    // =================================
+    const rdapOrgUrl = `https://rdap.org/${type}/${target}`;
+    this.println(`# curl ${rdapOrgUrl} # <- RDAP`);
+    let rdapOrgRes;
+    try {
+      rdapOrgRes = await fetch(rdapOrgUrl, {
+        redirect: 'manual'
+      });
+
+      switch (rdapOrgRes.status) {
+        case 302:
+          // Process after this switch
+          break;
+        case 400:
+          this.eprintln('! rdap.org returns 400. Program bug?');
+          this.println();
+          return;
+        case 403:
+          this.eprintln('! This client might blocked by rdap.org');
+          this.println();
+          return;
+        case 404:
+          this.eprintln('! rdap.org don\'t know endpoint');
+          this.println();
+          return;
+        case 500:
+          this.eprintln('! rdap.org returns 500');
+          this.println();
+          return;
+        default:
+          this.eprintln(`! rdap.org returns unexpected code: ${rdapOrgRes.status}`);
+          this.println();
+          return;
+      }
+    }
+    catch (error) {
+      console.error(error);
+      this.eprintln(`! rdap.org error: ${error}`);
+      this.println();
+      return;
+    }
+
+    const newUrl = rdapOrgRes.headers.get('Location');
+    if (newUrl === null || newUrl === undefined || newUrl === '') {
+      this.eprintln(`! rdap.org redirect destination is invalid?: ${newUrl}`);
+      this.println();
+      return;
+    }
+
+    this.println('EOF');
+    this.println();
+    // =================================
+    // END OF Code for rdap.org
+    // =================================
+
+    this.println(`# curl ${newUrl} # <- RDAP`);
+    try {
+      const firstRdapResult = await fetch(newUrl, {});
+      const firstRdapResultJson = await firstRdapResult.json();
+
+      if (typeof firstRdapResultJson['status'] !== 'undefined') {
+        this.println('- Status:');
+        firstRdapResultJson['status'].forEach(v => {
+          this.println(`   - ${v}`);
+        });
+        this.println('  EOF');
+      }
+
+      if (typeof firstRdapResultJson['nameservers'] !== 'undefined') {
+        this.println('- Nameservers:');
+        firstRdapResultJson['nameservers'].forEach(v => {
+          this.print(`   - ${v['ldhName']}`);
+          if (v['objectClassName'] === 'nameserver') {
+            this.println();
+          } else {
+            this.println(` (objectClassName: ${v['objectClassName']})`);
+          }
+        });
+        this.println('  EOF');
+      }
+
+      if (typeof firstRdapResultJson['entities'] !== 'undefined') {
+        this.println('- Entities:');
+        firstRdapResultJson['entities'].forEach(v => {
+          this.println(`   - Roles: ${v['roles'].join(', ')}`);
+          if (typeof v['vcardArray'] === 'undefined') {
+            this.eprintln('     ! This system requires `vcardArray` element. But given entity does not have this');
+            return;
+          }
+
+          this.println('     vcardArray[1]:');
+          try {
+            v['vcardArray'][1].forEach(v => {
+              this.print('     -');
+              this.print(` ${v[0]}`);
+              this.print(` ${JSON.stringify(v[1])}`);
+              this.print(` ${v[2]}`);
+              if (typeof v[3] === 'string') {
+                this.print(` ${v[3]}`);
+              } else if (Array.isArray(v[3])) {
+                this.print(` "${v[3].join(', ')}"`);
+              } else {
+                this.print(` ${JSON.stringify(v[3])}`);
+              }
+              this.println();
+            });
+          }
+          catch (error) {
+            this.eprintln(`   ! Unexpected: ${error}`);
+            return;
+          }
+        })
+        this.println('  EOF');
+      }
+    }
+    catch (error) {
+      console.error(error);
+      this.eprintln(`! error: ${error}`);
+      this.println();
+      return;
+    }
+
+    this.println('EOF');
+    this.println();
+  }
+
   private _domainSearch = async (target: string) => {
     const csRes = new ContinuousSearchResult();
 
@@ -109,7 +240,7 @@ class Sniffer {
         // If this is not a subdomain.
         // ToDo: This also contains rental server system (*.sakura.ne.jp). Remove those to avoid RDAP fail.
 
-        // ToDo: Write RDAP/whois query.
+        await this._recursiveRdap('domain', target);
 
         //this.println();
         return;
