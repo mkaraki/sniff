@@ -233,6 +233,29 @@ class Sniffer {
 
         await this._recursiveRdap('domain', target);
 
+        // Perform CT scan
+        this.println(`# curl https://api.certspotter.com/v1/issuances?domain=${target}&include_subdomains=true # <- Certificate Transparency`)
+        try {
+          const ctRaw = await fetch(`https://api.certspotter.com/v1/issuances?domain=${target}&include_subdomains=true&expand=dns_names&expand=issuer.caa_domains&expand=issuer.name`);
+          const ctData = (Array<any>)(await ctRaw.json());
+          console.debug(ctData)
+
+          ctData[0].forEach((v: Dict<any>) => {
+            console.trace(v);
+            this.println(`- CERT: ${v['cert_sha256']} (not_before: ${v['not_before']}, not_after: ${v['not_after']})`);
+            v['dns_names'].forEach((d: string) => {
+              csRes.nextSearch.push(d);
+              this.println(` - ${d}`);
+            });
+          })
+          this.println('EOF')
+        }
+        catch (e) {
+          this.eprintln('Failed to retrieve CT info.')
+          console.error(e)
+        }
+        this.println()
+
         //this.println();
         return;
       }
