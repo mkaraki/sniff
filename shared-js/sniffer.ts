@@ -46,7 +46,16 @@ class Sniffer {
   private _ipSearch = async (target: string) => {
     const csRes = new ContinuousSearchResult();
 
-    await this._recursiveRdap('ip', target);
+    const rdapInterests = await this._recursiveRdap('ip', target);
+    rdapInterests.forEach(i => {
+      if (isDomain(i)) {
+        const norm = normalizeDomain(i);
+        if (!revDnsIgnore(norm))
+          csRes.nextSearch.push(norm);
+      } else if (isIp(i)) {
+        csRes.nextSearch.push(i);
+      }
+    });
 
     await (async () => {
       const ptrAddr = getPtrAcceptableAddress(target);
@@ -96,7 +105,8 @@ class Sniffer {
     return ret;
   }
 
-  private _recursiveRdap = async (type: string, target: string) => {
+  private _recursiveRdap = async (type: string, target: string) : Promise<Array<string>> => {
+    const found: Array<string> = [];
     // Type must `domain`, `ip` or `autnum`. See: https://about.rdap.org/
 
     // =================================
@@ -105,7 +115,7 @@ class Sniffer {
     const rdapOrgUrl = `https://rdap.org/${type}/${target}`;
     this.println(`# curl ${rdapOrgUrl} # <- RDAP`);
     let rdapOrgRes;
-    try {
+      try {
       rdapOrgRes = await fetch(rdapOrgUrl, {
       });
 
@@ -114,23 +124,23 @@ class Sniffer {
           case 400:
             this.eprintln('! rdap.org returns 400. Program bug?');
             this.println();
-            return;
+            return found;
           case 403:
             this.eprintln('! This client might blocked by rdap.org');
             this.println();
-            return;
+            return found;
           case 404:
             this.eprintln('! rdap.org don\'t know endpoint');
             this.println();
-            return;
+            return found;
           case 500:
             this.eprintln('! rdap.org returns 500');
             this.println();
-            return;
+            return found;
           default:
             this.eprintln(`! rdap.org returns unexpected code: ${rdapOrgRes.status}`);
             this.println();
-            return;
+            return found;
         }
       }
     }
@@ -138,7 +148,7 @@ class Sniffer {
       console.error(error);
       this.eprintln(`! rdap.org error: ${error}`);
       this.println();
-      return;
+      return found;
     }
     this.println('EOF');
     this.println();
@@ -149,7 +159,7 @@ class Sniffer {
 
     const newUrl = rdapOrgRes.url;
     this.println(`# curl ${newUrl} # <- RDAP (final redirected address)`);
-    try {
+      try {
       const firstRdapResultJson = await rdapOrgRes.json();
 
       if (typeof firstRdapResultJson['status'] !== 'undefined') {
@@ -184,19 +194,45 @@ class Sniffer {
 
           this.println('     vcardArray[1]:');
           try {
-            v['vcardArray'][1].forEach(v => {
+            v['vcardArray'][1].forEach((ve: any) => {
               this.print('     -');
-              this.print(` ${v[0]}`);
-              this.print(` ${JSON.stringify(v[1])}`);
-              this.print(` ${v[2]}`);
-              if (typeof v[3] === 'string') {
-                this.print(` ${v[3]}`);
-              } else if (Array.isArray(v[3])) {
-                this.print(` "${v[3].join(', ')}"`);
+              this.print(` ${ve[0]}`);
+              this.print(` ${JSON.stringify(ve[1])}`);
+              this.print(` ${ve[2]}`);
+              if (typeof ve[3] === 'string') {
+                this.print(` ${ve[3]}`);
+              } else if (Array.isArray(ve[3])) {
+                this.print(` "${ve[3].join(', ')}"`);
               } else {
-                this.print(` ${JSON.stringify(v[3])}`);
+                this.print(` ${JSON.stringify(ve[3])}`);
               }
               this.println();
+
+              // If this vcard entry is an email, extract domain and add to found interests
+              try {
+                if (ve[0] === 'email') {
+                  let emailVal = '';
+                  if (typeof ve[3] === 'string') {
+                    emailVal = ve[3];
+                  } else if (Array.isArray(ve[3]) && ve[3].length > 0) {
+                    emailVal = ve[3][0];
+                  }
+
+                  const atIdx = emailVal.lastIndexOf('@');
+                  if (atIdx !== -1) {
+                    const domainPart = emailVal.substring(atIdx + 1).toLowerCase();
+                    if (isDomain(domainPart)) {
+                      const norm = normalizeDomain(domainPart);
+                      if (!dnsIgnore(norm)) {
+                        found.push(norm);
+                      }
+                    }
+                  }
+                }
+              }
+              catch (e) {
+                // ignore extraction errors per-entry
+              }
             });
           }
           catch (error) {
@@ -209,13 +245,16 @@ class Sniffer {
     }
     catch (error) {
       console.error(error);
+      console.error(error);
       this.eprintln(`! error: ${error}`);
       this.println();
-      return;
+      return found;
     }
 
     this.println('EOF');
     this.println();
+
+    return found;
   }
 
   private _domainSearch = async (target: string) => {
@@ -231,7 +270,16 @@ class Sniffer {
         // If this is not a subdomain.
         // ToDo: This also contains rental server system (*.sakura.ne.jp). Remove those to avoid RDAP fail.
 
-        await this._recursiveRdap('domain', target);
+        const rdapInterests = await this._recursiveRdap('domain', target);
+        rdapInterests.forEach(i => {
+          if (isDomain(i)) {
+            const norm = normalizeDomain(i);
+            if (!dnsIgnore(norm))
+              csRes.nextSearch.push(norm);
+          } else if (isIp(i)) {
+            csRes.nextSearch.push(i);
+          }
+        });
 
         // Perform CT scan
         this.println(`# curl https://api.certspotter.com/v1/issuances?domain=${target}&include_subdomains=true # <- Certificate Transparency`)
