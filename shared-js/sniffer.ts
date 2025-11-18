@@ -8,6 +8,7 @@ import psl from 'psl';
 import spf from 'spf-parse';
 import {dnsIgnore, revDnsIgnore, spfIncludeIgnore} from "./vendor-ignore.ts";
 import {recursiveRdap} from "./sniffers/rdap.ts";
+import {queryCtData} from "./sniffers/ct.ts";
 
 class ContinuousSearchResult {
   nextSearch: Array<string> = [];
@@ -131,27 +132,16 @@ class Sniffer {
         });
 
         // Perform CT scan
-        this.println(`# curl https://api.certspotter.com/v1/issuances?domain=${target}&include_subdomains=true # <- Certificate Transparency`)
-        try {
-          const ctRaw = await fetch(`https://api.certspotter.com/v1/issuances?domain=${target}&include_subdomains=true&expand=dns_names&expand=issuer.caa_domains&expand=issuer.name`);
-          const ctData = (Array<any>)(await ctRaw.json());
-          console.debug(ctData)
-
-          ctData[0].forEach((v: Dict<any>) => {
-            console.trace(v);
-            this.println(`- CERT: ${v['cert_sha256']} (not_before: ${v['not_before']}, not_after: ${v['not_after']})`);
-            v['dns_names'].forEach((d: string) => {
-              csRes.nextSearch.push(d);
-              this.println(` - ${d}`);
-            });
-          })
-          this.println('EOF')
-        }
-        catch (e) {
-          this.eprintln('Failed to retrieve CT info.')
-          console.error(e)
-        }
-        this.println()
+        const ctResult = await queryCtData(this, target);
+        ctResult.forEach(i => {
+          if (isDomain(i)) {
+            const norm = normalizeDomain(i);
+            if (!dnsIgnore(norm))
+              csRes.nextSearch.push(norm);
+          } else if (isIp(i)) {
+            csRes.nextSearch.push(i);
+          }
+        })
 
         //this.println();
         return;
