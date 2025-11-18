@@ -1,11 +1,10 @@
-import {isDomain, isIp} from "../validator.ts";
+import {isDomain} from "../validator.ts";
 import {normalizeDomain} from "../normalize.ts";
-import {dnsIgnore, spfIncludeIgnore} from "../vendor-ignore.ts";
+import {dnsIgnore} from "../vendor-ignore.ts";
 import {Sniffer} from '../sniffer.ts';
 
-const recursiveRdap = async (sniffer: Sniffer, type: string, target: string) : Promise<Array<string>> => {
+const recursiveRdap = async (sniffer: Sniffer, type: 'domain'|'ip'|'autnum', target: string) : Promise<Array<string>> => {
     const found: Array<string> = [];
-    // Type must `domain`, `ip` or `autnum`. See: https://about.rdap.org/
 
     // =================================
     // Code for rdap.org
