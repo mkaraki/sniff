@@ -1,4 +1,4 @@
-import {initializeLowerApiConsole} from "./lower-api-console.ts";
+import {initializeLowerApiConsole} from "../shared-js/lower-api-console.ts";
 import {Sniffer} from "../shared-js/sniffer.ts";
 import type {LowerApi} from "../shared-js/lower-api.ts";
 

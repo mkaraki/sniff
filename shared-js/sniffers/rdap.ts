@@ -3,8 +3,97 @@ import {normalizeDomain} from "../normalize.ts";
 import {dnsIgnore} from "../vendor-ignore.ts";
 import {Sniffer} from '../sniffer.ts';
 
-const recursiveRdap = async (sniffer: Sniffer, type: 'domain'|'ip'|'autnum', target: string) : Promise<Array<string>> => {
+const parseRdapObject = (sniffer: Sniffer, firstRdapResultJson: any): Array<string> => {
     const found: Array<string> = [];
+
+    if (typeof firstRdapResultJson['status'] !== 'undefined') {
+        sniffer.println('- Status:');
+        firstRdapResultJson['status'].forEach((v: any) => {
+            sniffer.println(`   - ${v}`);
+        });
+        sniffer.println('  EOF');
+    }
+
+    if (typeof firstRdapResultJson['nameservers'] !== 'undefined') {
+        sniffer.println('- Nameservers:');
+        firstRdapResultJson['nameservers'].forEach((v: any) => {
+            sniffer.print(`   - ${v['ldhName']}`);
+            if (v['objectClassName'] === 'nameserver') {
+                sniffer.println();
+            } else {
+                sniffer.println(` (objectClassName: ${v['objectClassName']})`);
+            }
+        });
+        sniffer.println('  EOF');
+    }
+
+    if (typeof firstRdapResultJson['entities'] !== 'undefined') {
+        sniffer.println('- Entities:');
+        firstRdapResultJson['entities'].forEach((v: any) => {
+            sniffer.println(`   - Roles: ${v['roles'].join(', ')}`);
+            if (typeof v['vcardArray'] === 'undefined') {
+                sniffer.eprintln('     ! This system requires `vcardArray` element. But given entity does not have sniffer.');
+                return;
+            }
+
+            sniffer.println('     vcardArray[1]:');
+            try {
+                v['vcardArray'][1].forEach((ve: any) => {
+                    sniffer.print('     -');
+                    sniffer.print(` ${ve[0]}`);
+                    sniffer.print(` ${JSON.stringify(ve[1])}`);
+                    sniffer.print(` ${ve[2]}`);
+                    if (typeof ve[3] === 'string') {
+                        sniffer.print(` ${ve[3]}`);
+                    } else if (Array.isArray(ve[3])) {
+                        sniffer.print(` "${ve[3].join(', ')}"`);
+                    } else {
+                        sniffer.print(` ${JSON.stringify(ve[3])}`);
+                    }
+                    sniffer.println();
+
+                    // If sniffer.vcard entry is an email, extract domain and add to found interests
+                    try {
+                        if (ve[0] === 'email') {
+                            let emailVal = '';
+                            if (typeof ve[3] === 'string') {
+                                emailVal = ve[3];
+                            } else if (Array.isArray(ve[3]) && ve[3].length > 0) {
+                                emailVal = ve[3][0];
+                            }
+
+                            const atIdx = emailVal.lastIndexOf('@');
+                            if (atIdx !== -1) {
+                                const domainPart = emailVal.substring(atIdx + 1).toLowerCase();
+                                if (isDomain(domainPart)) {
+                                    const norm = normalizeDomain(domainPart);
+                                    if (!dnsIgnore(norm)) {
+                                        found.push(norm);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    catch (e) {
+                        console.error(e);
+                        sniffer.eprintln(`       ! Error when extracting email address: ${e}`);
+                    }
+                });
+            }
+            catch (error) {
+                console.error(error);
+                sniffer.eprintln(`   ! Unexpected: ${error}`);
+                return;
+            }
+        })
+        sniffer.println('  EOF');
+    }
+
+    return found;
+}
+
+const recursiveRdap = async (sniffer: Sniffer, type: 'domain'|'ip'|'autnum', target: string) : Promise<Array<string>> => {
+    let found: Array<string> = [];
 
     // =================================
     // Code for rdap.org
@@ -59,88 +148,7 @@ const recursiveRdap = async (sniffer: Sniffer, type: 'domain'|'ip'|'autnum', tar
     try {
         const firstRdapResultJson: any = await rdapOrgRes.json();
 
-        if (typeof firstRdapResultJson['status'] !== 'undefined') {
-            sniffer.println('- Status:');
-            firstRdapResultJson['status'].forEach((v: any) => {
-                sniffer.println(`   - ${v}`);
-            });
-            sniffer.println('  EOF');
-        }
-
-        if (typeof firstRdapResultJson['nameservers'] !== 'undefined') {
-            sniffer.println('- Nameservers:');
-            firstRdapResultJson['nameservers'].forEach(v => {
-                sniffer.print(`   - ${v['ldhName']}`);
-                if (v['objectClassName'] === 'nameserver') {
-                    sniffer.println();
-                } else {
-                    sniffer.println(` (objectClassName: ${v['objectClassName']})`);
-                }
-            });
-            sniffer.println('  EOF');
-        }
-
-        if (typeof firstRdapResultJson['entities'] !== 'undefined') {
-            sniffer.println('- Entities:');
-            firstRdapResultJson['entities'].forEach((v: any) => {
-                sniffer.println(`   - Roles: ${v['roles'].join(', ')}`);
-                if (typeof v['vcardArray'] === 'undefined') {
-                    sniffer.eprintln('     ! This system requires `vcardArray` element. But given entity does not have sniffer.');
-                    return;
-                }
-
-                sniffer.println('     vcardArray[1]:');
-                try {
-                    v['vcardArray'][1].forEach((ve: any) => {
-                        sniffer.print('     -');
-                        sniffer.print(` ${ve[0]}`);
-                        sniffer.print(` ${JSON.stringify(ve[1])}`);
-                        sniffer.print(` ${ve[2]}`);
-                        if (typeof ve[3] === 'string') {
-                            sniffer.print(` ${ve[3]}`);
-                        } else if (Array.isArray(ve[3])) {
-                            sniffer.print(` "${ve[3].join(', ')}"`);
-                        } else {
-                            sniffer.print(` ${JSON.stringify(ve[3])}`);
-                        }
-                        sniffer.println();
-
-                        // If sniffer.vcard entry is an email, extract domain and add to found interests
-                        try {
-                            if (ve[0] === 'email') {
-                                let emailVal = '';
-                                if (typeof ve[3] === 'string') {
-                                    emailVal = ve[3];
-                                } else if (Array.isArray(ve[3]) && ve[3].length > 0) {
-                                    emailVal = ve[3][0];
-                                }
-
-                                const atIdx = emailVal.lastIndexOf('@');
-                                if (atIdx !== -1) {
-                                    const domainPart = emailVal.substring(atIdx + 1).toLowerCase();
-                                    if (isDomain(domainPart)) {
-                                        const norm = normalizeDomain(domainPart);
-                                        if (!dnsIgnore(norm)) {
-                                            found.push(norm);
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        catch (e) {
-                            console.error(e);
-                            sniffer.eprintln(`       ! Error when extracting email address: ${e}`);
-                        }
-                    });
-                }
-                catch (error) {
-                    console.error(e);
-                    sniffer.eprintln(`   ! Unexpected: ${error}`);
-                    return;
-                }
-            })
-            sniffer.println('  EOF');
-        }
+        found = parseRdapObject(sniffer, firstRdapResultJson);
     }
     catch (error) {
         console.error(error);
@@ -157,5 +165,6 @@ const recursiveRdap = async (sniffer: Sniffer, type: 'domain'|'ip'|'autnum', tar
 };
 
 export {
+    parseRdapObject,
     recursiveRdap,
 };

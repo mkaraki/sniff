@@ -1,5 +1,5 @@
-import { type LowerApi, type TextOutputStream } from '../shared-js/lower-api.ts';
-import {dnsOverHttpsQuery} from "../shared-js/api/dns-over-https.ts";
+import { type LowerApi, type TextOutputStream } from './lower-api.ts';
+import {dnsOverHttpsQuery} from "./api/dns-over-https.ts";
 
 const initializeLowerApiConsole = () => {
     const digFetch = async (type: string, name: string) => {
@@ -33,6 +33,26 @@ const initializeLowerApiConsole = () => {
     return new LowerApiConsole();
 };
 
+const initializeLowerApiConsoleForTest = () => {
+    const digFetch = async (type: string, name: string) => {
+        return await dnsOverHttpsQuery('https://cloudflare-dns.com/dns-query', type, name);
+    }
+
+    class OutputDevNull implements TextOutputStream {
+        print = (value: string) => {};
+        println = (value?: string) => {};
+    }
+
+    class LowerApiConsole implements LowerApi {
+        dig = digFetch;
+        stdout = new OutputDevNull();
+        stderr = new OutputDevNull();
+    }
+
+    return new LowerApiConsole();
+};
+
 export {
     initializeLowerApiConsole,
+    initializeLowerApiConsoleForTest
 }

@@ -1,3 +1,4 @@
+// @ts-ignore
 import psl from 'psl';
 
 // from: https://github.com/mkaraki/webtools/blob/master/js/src/utils/net/ip_address.ts
