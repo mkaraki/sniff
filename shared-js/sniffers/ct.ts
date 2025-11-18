@@ -1,6 +1,6 @@
 import {isDomain, isIp} from "../validator.ts";
 
-const parseCtData = (sniffer: Sniffer, ctData: Array<any>): Array<string> => {
+const parseCtData = (sniffer: Sniffer, ctData: Array<Array<any>>): Array<string> => {
     const csRes = [];
 
     ctData[0].forEach((v: Dict<any>) => {
