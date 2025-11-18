@@ -1,5 +1,7 @@
 # Sniff
 
+[![codecov](https://codecov.io/github/mkaraki/sniff/graph/badge.svg?token=2ghmclIUef)](https://codecov.io/github/mkaraki/sniff)
+
 Check unknown domain/IP information.
 
 ## Browser edition usage
