@@ -1,5 +1,4 @@
-import { DigAnswer, DigAnswerEntry, type LowerApi, type TextOutputStream } from '../shared-js/lower-api.ts';
-import dns from 'node:dns';
+import { type LowerApi, type TextOutputStream } from '../shared-js/lower-api.ts';
 import {dnsOverHttpsQuery} from "../shared-js/api/dns-over-https.ts";
 
 const initializeLowerApiConsole = () => {

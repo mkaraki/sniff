@@ -1,4 +1,4 @@
-import {DigAnswerEntry, type LowerApi, type TextOutputStream} from './lower-api';
+import {DigAnswerEntry, type LowerApi} from './lower-api';
 import {getPtrAcceptableAddress, isDomain, isIp} from "./validator.ts";
 import {normalizeDomain} from "./normalize.ts";
 import {ALL_DIG_TYPES_STRING, DNS_RECORD_TYPE_STRING_LOOKUP_TABLE} from "./dns.ts";
