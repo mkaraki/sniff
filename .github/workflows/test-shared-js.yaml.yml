@@ -1,13 +1,7 @@
 name: Test shared-js
 on:
   push:
-    paths:
-      - .github
-      - shared-js
   pull_request:
-    paths:
-      - .github
-      - shared-js
 permissions:
   contents: read
 
