@@ -7,6 +7,7 @@ import psl from 'psl';
 // @ts-ignore
 import spf from 'spf-parse';
 import {dnsIgnore, revDnsIgnore, spfIncludeIgnore} from "./vendor-ignore.ts";
+import {recursiveRdap} from "./sniffers/rdap.ts";
 
 class ContinuousSearchResult {
   nextSearch: Array<string> = [];
@@ -21,16 +22,16 @@ class Sniffer {
     this.lowerApi = lowerApi;
   }
 
-  private println = (value?: string) => {
+  public println = (value?: string) => {
     this.lowerApi.stdout.println(value);
   }
-  private print = (value: string) => {
+  public print = (value: string) => {
     this.lowerApi.stdout.print(value);
   }
-  private eprintln = (value?: string) => {
+  public eprintln = (value?: string) => {
     this.lowerApi.stderr.println(value);
   }
-  private eprint = (value: string) => {
+  public eprint = (value: string) => {
     this.lowerApi.stderr.print(value);
   }
 
@@ -46,7 +47,7 @@ class Sniffer {
   private _ipSearch = async (target: string) => {
     const csRes = new ContinuousSearchResult();
 
-    const rdapInterests = await this._recursiveRdap('ip', target);
+    const rdapInterests = await recursiveRdap(this, 'ip', target);
     rdapInterests.forEach(i => {
       if (isDomain(i)) {
         const norm = normalizeDomain(i);
@@ -105,158 +106,6 @@ class Sniffer {
     return ret;
   }
 
-  private _recursiveRdap = async (type: string, target: string) : Promise<Array<string>> => {
-    const found: Array<string> = [];
-    // Type must `domain`, `ip` or `autnum`. See: https://about.rdap.org/
-
-    // =================================
-    // Code for rdap.org
-    // =================================
-    const rdapOrgUrl = `https://rdap.org/${type}/${target}`;
-    this.println(`# curl ${rdapOrgUrl} # <- RDAP`);
-    let rdapOrgRes;
-      try {
-      rdapOrgRes = await fetch(rdapOrgUrl, {
-      });
-
-      if (!rdapOrgRes.redirected) {
-        switch (rdapOrgRes.status) {
-          case 400:
-            this.eprintln('! rdap.org returns 400. Program bug?');
-            this.println();
-            return found;
-          case 403:
-            this.eprintln('! This client might blocked by rdap.org');
-            this.println();
-            return found;
-          case 404:
-            this.eprintln('! rdap.org don\'t know endpoint');
-            this.println();
-            return found;
-          case 500:
-            this.eprintln('! rdap.org returns 500');
-            this.println();
-            return found;
-          default:
-            this.eprintln(`! rdap.org returns unexpected code: ${rdapOrgRes.status}`);
-            this.println();
-            return found;
-        }
-      }
-    }
-    catch (error) {
-      console.error(error);
-      this.eprintln(`! rdap.org error: ${error}`);
-      this.println();
-      return found;
-    }
-    this.println('EOF');
-    this.println();
-    // =================================
-    // END OF Code for rdap.org
-    // =================================
-
-
-    const newUrl = rdapOrgRes.url;
-    this.println(`# curl ${newUrl} # <- RDAP (final redirected address)`);
-      try {
-      const firstRdapResultJson = await rdapOrgRes.json();
-
-      if (typeof firstRdapResultJson['status'] !== 'undefined') {
-        this.println('- Status:');
-        firstRdapResultJson['status'].forEach(v => {
-          this.println(`   - ${v}`);
-        });
-        this.println('  EOF');
-      }
-
-      if (typeof firstRdapResultJson['nameservers'] !== 'undefined') {
-        this.println('- Nameservers:');
-        firstRdapResultJson['nameservers'].forEach(v => {
-          this.print(`   - ${v['ldhName']}`);
-          if (v['objectClassName'] === 'nameserver') {
-            this.println();
-          } else {
-            this.println(` (objectClassName: ${v['objectClassName']})`);
-          }
-        });
-        this.println('  EOF');
-      }
-
-      if (typeof firstRdapResultJson['entities'] !== 'undefined') {
-        this.println('- Entities:');
-        firstRdapResultJson['entities'].forEach(v => {
-          this.println(`   - Roles: ${v['roles'].join(', ')}`);
-          if (typeof v['vcardArray'] === 'undefined') {
-            this.eprintln('     ! This system requires `vcardArray` element. But given entity does not have this');
-            return;
-          }
-
-          this.println('     vcardArray[1]:');
-          try {
-            v['vcardArray'][1].forEach((ve: any) => {
-              this.print('     -');
-              this.print(` ${ve[0]}`);
-              this.print(` ${JSON.stringify(ve[1])}`);
-              this.print(` ${ve[2]}`);
-              if (typeof ve[3] === 'string') {
-                this.print(` ${ve[3]}`);
-              } else if (Array.isArray(ve[3])) {
-                this.print(` "${ve[3].join(', ')}"`);
-              } else {
-                this.print(` ${JSON.stringify(ve[3])}`);
-              }
-              this.println();
-
-              // If this vcard entry is an email, extract domain and add to found interests
-              try {
-                if (ve[0] === 'email') {
-                  let emailVal = '';
-                  if (typeof ve[3] === 'string') {
-                    emailVal = ve[3];
-                  } else if (Array.isArray(ve[3]) && ve[3].length > 0) {
-                    emailVal = ve[3][0];
-                  }
-
-                  const atIdx = emailVal.lastIndexOf('@');
-                  if (atIdx !== -1) {
-                    const domainPart = emailVal.substring(atIdx + 1).toLowerCase();
-                    if (isDomain(domainPart)) {
-                      const norm = normalizeDomain(domainPart);
-                      if (!dnsIgnore(norm)) {
-                        found.push(norm);
-                      }
-                    }
-                  }
-                }
-              }
-              catch (e) {
-                // ignore extraction errors per-entry
-              }
-            });
-          }
-          catch (error) {
-            this.eprintln(`   ! Unexpected: ${error}`);
-            return;
-          }
-        })
-        this.println('  EOF');
-      }
-    }
-    catch (error) {
-      console.error(error);
-      console.error(error);
-      this.eprintln(`! error: ${error}`);
-      this.println();
-      return found;
-    }
-
-    this.println('EOF');
-    this.println();
-
-    return found;
-  }
-
   private _domainSearch = async (target: string) => {
     const csRes = new ContinuousSearchResult();
 
@@ -270,7 +119,7 @@ class Sniffer {
         // If this is not a subdomain.
         // ToDo: This also contains rental server system (*.sakura.ne.jp). Remove those to avoid RDAP fail.
 
-        const rdapInterests = await this._recursiveRdap('domain', target);
+        const rdapInterests = await recursiveRdap(this, 'domain', target);
         rdapInterests.forEach(i => {
           if (isDomain(i)) {
             const norm = normalizeDomain(i);
